@@ -55,11 +55,17 @@ const VALID_SURVEY_TYPES = ['initial', 'biweekly'];
 
 // Load participant codes database (used by /validate). Optional — the
 // server still starts without it, but validation will reject everything.
+// PARTICIPANT_CODES_FILE env var overrides the default path (used by tests
+// and dev setups that don't want to commit codes into the repo).
 let participantCodes = null;
 try {
-  const codesPath = path.join(__dirname, 'participant_codes.json');
+  const codesPath = process.env.PARTICIPANT_CODES_FILE
+    || path.join(__dirname, 'participant_codes.json');
   participantCodes = JSON.parse(fs.readFileSync(codesPath, 'utf8'));
-  console.log(`✅ Loaded ${participantCodes.meta.totalCodes} participant codes`);
+  const total = participantCodes.meta && participantCodes.meta.totalCodes;
+  console.log(total !== undefined
+    ? `✅ Loaded ${total} participant codes from ${codesPath}`
+    : `✅ Loaded participant codes from ${codesPath}`);
 } catch (error) {
   console.warn(`⚠️  Participant codes database not loaded: ${error.message}`);
   console.warn('   /api/v1/participants/validate will reject all requests.');
