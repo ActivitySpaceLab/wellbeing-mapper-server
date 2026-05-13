@@ -26,11 +26,13 @@ The submission paths must match the constants in
 ## Local development
 
 ```bash
-cd data_collection_server
+cd wellbeing-mapper-server
+./scripts/dev.sh        # bootstraps .env / node_modules, runs npm run dev
+# or:
 cp .env.template .env
 npm install
-npm start              # listens on PORT (default 3000)
-npm run test:local     # smoke-test against http://localhost:3000
+npm start               # listens on PORT (default 3000)
+./scripts/smoke-test.sh # end-to-end test against a sandbox port
 ```
 
 Received blobs are written to `STORAGE_DIR` (default `./received`,
