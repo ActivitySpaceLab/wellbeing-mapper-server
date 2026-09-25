@@ -1,229 +1,158 @@
 #!/usr/bin/env python3
 """
-Participant Code Generator for Gauteng Wellbeing Mapping Study
-Generates secure participant codes and their corresponding SHA-256 hashes
+Participant code generator for the Wellbeing Mapper study.
 
-Usage:
-    python3 generate_participant_codes.py --count 500 --prefix P4H --start 1
-    python3 generate_participant_codes.py --pilot-codes --count 10
-    python3 generate_participant_codes.py --verify-existing
+Writes two files:
+
+  participant_codes.json   Only SHA-256 hashes of the codes. This is the file
+                           the server loads (PARTICIPANT_CODES_FILE). A copy
+                           of it, or of the server, reveals no code.
+  participant_codes_<type>_<date>.csv
+                           The codes themselves, one per participant, to hand
+                           out. Keep this file private and off the server.
+
+Codes are short, random, and drawn from an alphabet with no 0/O or 1/I/L
+confusion and no special characters, so they are easy to read out and type
+but hard to guess. The app uppercases input before hashing, so codes are
+case-insensitive.
+
+Examples:
+    # 500 study codes, 5 characters each (recommended default)
+    python3 generate_participant_codes.py --count 500
+
+    # 20 pilot codes into the same database (the study codes are kept)
+    python3 generate_participant_codes.py --count 20 --type pilot
+
+    # A human-readable prefix, e.g. IT-AB3KP
+    python3 generate_participant_codes.py --count 500 --prefix IT-
+
+    # 6-character codes for extra guess-resistance
+    python3 generate_participant_codes.py --count 1000 --length 6
+
+Test codes (TESTER, TEST123, DEV001) are only added with --with-test-codes.
+The app accepts them offline in debug builds; putting them in the server's
+file would let anyone who knows them unlock research mode in the released
+app, so leave them out of the production database.
 """
 
 import argparse
-import json
-import hashlib
-import os
 import csv
-from datetime import datetime
-from typing import List, Dict, Set
+import hashlib
+import json
+import os
+import secrets
+import sys
+from datetime import datetime, timezone
+from typing import Dict, List, Set
+
+# Digits 2-9 and letters A-Z without I, L, O: 31 unambiguous characters.
+ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+TYPES = ("pilot", "study", "test")
+TEST_CODES = ["TESTER", "TEST123", "DEV001"]
+
 
 def hash_code(code: str) -> str:
-    """Generate SHA-256 hash of participant code (matches app implementation)"""
+    """SHA-256 of the code, trimmed and uppercased (as the app and server do)."""
     return hashlib.sha256(code.strip().upper().encode()).hexdigest()
 
-def generate_study_codes(prefix: str, start: int, count: int) -> List[str]:
-    """Generate sequential study codes with zero-padding"""
-    codes = []
-    for i in range(start, start + count):
-        code = f"{prefix}{i:03d}"  # Zero-padded to 3 digits
+
+def generate_codes(count: int, length: int, prefix: str, taken_hashes: Set[str]) -> List[str]:
+    """`count` unique random codes whose hashes are not in `taken_hashes`."""
+    keyspace = len(ALPHABET) ** length
+    if count > keyspace // 2:
+        raise ValueError(
+            f"{count} codes of length {length} would use more than half of the "
+            f"{keyspace:,} possible codes; increase --length"
+        )
+    codes: List[str] = []
+    seen = set(taken_hashes)
+    while len(codes) < count:
+        code = prefix + "".join(secrets.choice(ALPHABET) for _ in range(length))
+        digest = hash_code(code)
+        if digest in seen:
+            continue
+        seen.add(digest)
         codes.append(code)
     return codes
 
-def generate_pilot_codes(prefix: str, count: int) -> List[str]:
-    """Generate pilot codes with P suffix"""
-    codes = []
-    for i in range(1, count + 1):
-        code = f"{prefix}{i}P"
-        codes.append(code)
-    return codes
 
-def verify_codes_against_existing(codes: List[str], existing_file: str) -> Dict[str, any]:
-    """Verify codes against existing database"""
-    if not os.path.exists(existing_file):
-        return {"status": "no_existing_file", "conflicts": []}
-    
-    try:
-        with open(existing_file, 'r') as f:
-            existing_data = json.load(f)
-        
-        existing_codes = set()
-        existing_codes.update(existing_data.get('pilot_codes', []))
-        existing_codes.update(existing_data.get('study_codes', []))
-        existing_codes.update(existing_data.get('test_codes', []))
-        
-        conflicts = [code for code in codes if code in existing_codes]
-        
-        return {
-            "status": "verified",
-            "existing_total": len(existing_codes),
-            "new_codes": len(codes),
-            "conflicts": conflicts
-        }
-    except Exception as e:
-        return {"status": "error", "error": str(e), "conflicts": []}
+def existing_hashes(data: Dict, code_type: str) -> List[str]:
+    """Hashes already in the database for a type; plain codes from older
+    generator versions are hashed."""
+    hashes = list(data.get(f"{code_type}_hashes", []))
+    hashes += [hash_code(code) for code in data.get(f"{code_type}_codes", [])]
+    return sorted(set(hashes))
 
-def save_codes_database(codes_data: Dict, output_file: str) -> bool:
-    """Save codes to JSON database"""
-    try:
-        with open(output_file, 'w') as f:
-            json.dump(codes_data, f, indent=2)
-        return True
-    except Exception as e:
-        print(f"❌ Error saving database: {e}")
-        return False
 
-def save_codes_csv(codes: List[str], output_file: str) -> bool:
-    """Save codes to CSV for easy distribution"""
-    try:
-        with open(output_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Code', 'SHA256_Hash'])
-            for code in codes:
-                writer.writerow([code, hash_code(code)])
-        return True
-    except Exception as e:
-        print(f"❌ Error saving CSV: {e}")
-        return False
-
-def print_codes_summary(codes_data: Dict):
-    """Print summary of generated codes"""
-    print("\n" + "="*60)
-    print("📋 PARTICIPANT CODES SUMMARY")
-    print("="*60)
-    print(f"📅 Generated: {codes_data['meta']['created']}")
-    print(f"📊 Total Codes: {codes_data['meta']['totalCodes']}")
-    print(f"🧪 Pilot Codes: {len(codes_data.get('pilot_codes', []))}")
-    print(f"📚 Study Codes: {len(codes_data.get('study_codes', []))}")
-    print(f"🔧 Test Codes: {len(codes_data.get('test_codes', []))}")
-    
-    if codes_data.get('pilot_codes'):
-        print(f"\n🧪 Pilot Codes: {', '.join(codes_data['pilot_codes'][:5])}{'...' if len(codes_data['pilot_codes']) > 5 else ''}")
-    
-    if codes_data.get('study_codes'):
-        print(f"📚 Study Codes: {codes_data['study_codes'][0]} to {codes_data['study_codes'][-1]}")
-    
-    print("\n🔒 Security Features:")
-    print("  • Codes are hashed with SHA-256 before validation")
-    print("  • Server never receives plaintext codes")
-    print("  • Each code is cryptographically unique")
-    
-    print("\n📦 Distribution Options:")
-    print("  • Upload participant_codes.json to proxy server")
-    print("  • Use CSV file for participant handouts")
-    print("  • QR codes can be generated from CSV data")
-    print("="*60)
-
-def main():
-    parser = argparse.ArgumentParser(description='Generate participant codes for Gauteng Wellbeing Study')
-    parser.add_argument('--count', type=int, default=500, help='Number of codes to generate')
-    parser.add_argument('--prefix', type=str, default='P4H', help='Code prefix')
-    parser.add_argument('--start', type=int, default=1, help='Starting number for sequential codes')
-    parser.add_argument('--pilot-codes', action='store_true', help='Generate pilot codes with P suffix')
-    parser.add_argument('--verify-existing', action='store_true', help='Verify against existing codes file')
-    parser.add_argument('--output-dir', type=str, default='.', help='Output directory')
-    parser.add_argument('--existing-file', type=str, default='participant_codes.json', help='Existing codes file to check against')
-    
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate random participant codes for the Wellbeing Mapper study",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__.split("Examples:")[1],
+    )
+    parser.add_argument("--count", type=int, default=500, help="codes to generate (default 500)")
+    parser.add_argument("--length", type=int, default=5, help="random characters per code (default 5)")
+    parser.add_argument("--prefix", default="", help="fixed prefix, e.g. IT- (default none)")
+    parser.add_argument("--type", choices=TYPES, default="study", help="which list the codes go into")
+    parser.add_argument("--with-test-codes", action="store_true",
+                        help=f"also accept the debug test codes {', '.join(TEST_CODES)}")
+    parser.add_argument("--output-dir", default=".", help="where to write the files (default: here)")
     args = parser.parse_args()
-    
-    print("🚀 Gauteng Wellbeing Study - Participant Code Generator")
-    print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # Generate codes based on type
-    if args.pilot_codes:
-        print(f"\n🧪 Generating {args.count} pilot codes...")
-        new_codes = generate_pilot_codes(args.prefix, args.count)
-        code_type = "pilot"
-    else:
-        print(f"\n📚 Generating {args.count} study codes...")
-        new_codes = generate_study_codes(args.prefix, args.start, args.count)
-        code_type = "study"
-    
-    print(f"✅ Generated {len(new_codes)} codes")
-    
-    # Verify against existing if requested
-    if args.verify_existing:
-        print(f"\n🔍 Verifying against existing file: {args.existing_file}")
-        verification = verify_codes_against_existing(new_codes, args.existing_file)
-        
-        if verification["status"] == "verified":
-            print(f"📊 Existing codes: {verification['existing_total']}")
-            print(f"🆕 New codes: {verification['new_codes']}")
-            if verification["conflicts"]:
-                print(f"⚠️  Conflicts found: {len(verification['conflicts'])}")
-                print(f"   Conflicting codes: {', '.join(verification['conflicts'][:5])}{'...' if len(verification['conflicts']) > 5 else ''}")
-                print("❌ Cannot proceed with conflicting codes")
-                return
-            else:
-                print("✅ No conflicts found")
-        elif verification["status"] == "no_existing_file":
-            print("ℹ️  No existing file found - will create new database")
-        else:
-            print(f"❌ Verification error: {verification.get('error', 'Unknown error')}")
-            return
-    
-    # Load existing data if available
-    existing_data = {}
-    if os.path.exists(args.existing_file):
-        try:
-            with open(args.existing_file, 'r') as f:
-                existing_data = json.load(f)
-            print(f"📁 Loaded existing data from {args.existing_file}")
-        except Exception as e:
-            print(f"⚠️  Could not load existing file: {e}")
-    
-    # Create codes database structure
-    codes_data = {
+    if args.count < 1 or args.length < 3:
+        parser.error("--count must be at least 1 and --length at least 3")
+
+    json_path = os.path.join(args.output_dir, "participant_codes.json")
+    existing: Dict = {}
+    if os.path.exists(json_path):
+        with open(json_path, encoding="utf-8") as f:
+            existing = json.load(f)
+        print(f"Extending {json_path}")
+
+    hashes = {t: existing_hashes(existing, t) for t in TYPES}
+    if args.with_test_codes:
+        hashes["test"] = sorted(set(hashes["test"]) | {hash_code(c) for c in TEST_CODES})
+    taken = {h for hs in hashes.values() for h in hs}
+
+    try:
+        new_codes = generate_codes(args.count, args.length, args.prefix, taken)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    hashes[args.type] = sorted(set(hashes[args.type]) | {hash_code(c) for c in new_codes})
+
+    database = {
         "meta": {
-            "version": "1.0.0",
-            "created": datetime.now().isoformat() + "Z",
-            "description": "Participant codes for Gauteng Wellbeing Mapping Study",
-            "generator_version": "1.0.0"
+            "version": "3.0.0",
+            "created": datetime.now(timezone.utc).isoformat(),
+            "description": "SHA-256 hashes of Wellbeing Mapper participant codes; the codes are not in this file",
+            "code_length": args.length,
+            "alphabet": ALPHABET,
+            "totalCodes": sum(len(hs) for hs in hashes.values()),
         },
-        "pilot_codes": existing_data.get("pilot_codes", []),
-        "study_codes": existing_data.get("study_codes", []),
-        "test_codes": existing_data.get("test_codes", ["TESTER", "TEST123", "DEV001"])
+        **{f"{t}_hashes": hashes[t] for t in TYPES},
     }
-    
-    # Add new codes to appropriate category
-    if code_type == "pilot":
-        codes_data["pilot_codes"].extend(new_codes)
-        codes_data["pilot_codes"] = sorted(list(set(codes_data["pilot_codes"])))  # Remove duplicates and sort
-    else:
-        codes_data["study_codes"].extend(new_codes)
-        codes_data["study_codes"] = sorted(list(set(codes_data["study_codes"])))  # Remove duplicates and sort
-    
-    # Calculate total
-    total_codes = len(codes_data["pilot_codes"]) + len(codes_data["study_codes"]) + len(codes_data["test_codes"])
-    codes_data["meta"]["totalCodes"] = total_codes
-    
-    # Save files
-    output_json = os.path.join(args.output_dir, "participant_codes.json")
-    output_csv = os.path.join(args.output_dir, f"participant_codes_{code_type}_{datetime.now().strftime('%Y%m%d')}.csv")
-    
-    print(f"\n💾 Saving codes database...")
-    if save_codes_database(codes_data, output_json):
-        print(f"✅ Database saved: {output_json}")
-    
-    print(f"💾 Saving CSV for distribution...")
-    if save_codes_csv(new_codes, output_csv):
-        print(f"✅ CSV saved: {output_csv}")
-    
-    # Print summary
-    print_codes_summary(codes_data)
-    
-    # Print first few codes and hashes for verification
-    print(f"\n🔍 Sample {code_type} codes and hashes:")
-    for i, code in enumerate(new_codes[:3]):
-        print(f"  {code} → {hash_code(code)}")
-    
-    if len(new_codes) > 3:
-        print(f"  ... and {len(new_codes) - 3} more")
-    
-    print(f"\n🎯 Next Steps:")
-    print(f"  1. Upload {output_json} to your proxy server")
-    print(f"  2. Use {output_csv} to create participant handouts")
-    print(f"  3. Test validation with a few codes")
-    print(f"  4. Deploy updated proxy server")
+    os.makedirs(args.output_dir, exist_ok=True)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(database, f, indent=2)
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_path = os.path.join(args.output_dir, f"participant_codes_{args.type}_{stamp}.csv")
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["code", "sha256"])
+        for code in new_codes:
+            writer.writerow([code, hash_code(code)])
+
+    keyspace = len(ALPHABET) ** args.length
+    print(f"Generated {len(new_codes)} {args.type} codes of {args.length} characters"
+          f" (prefix {args.prefix!r}); {keyspace:,} possible codes, so a random guess"
+          f" hits a valid code with probability {database['meta']['totalCodes'] / keyspace:.1e}")
+    print(f"  hashes (for the server): {json_path}  "
+          f"[pilot {len(hashes['pilot'])}, study {len(hashes['study'])}, test {len(hashes['test'])}]")
+    print(f"  codes (keep private):    {csv_path}")
+    print("Sample:", ", ".join(new_codes[:3]))
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
