@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# Start the data-collection server in dev mode.
-# Creates a default .env if missing and ensures node_modules is installed.
-
+# Runs the server locally with automatic restarts on file changes.
+# Creates .env from the template on first use and installs dependencies.
 set -euo pipefail
-
 cd "$(dirname "$0")/.."
 
 if [[ ! -f .env ]]; then
-  cp .env.template .env
-  # Default to a development-friendly NODE_ENV so verbose logging kicks in.
-  sed -i '' 's/^NODE_ENV=production/NODE_ENV=development/' .env || true
+  sed 's/^NODE_ENV=production/NODE_ENV=development/' .env.template > .env
   echo "[dev] Created .env from .env.template"
 fi
-
 if [[ ! -d node_modules ]]; then
-  echo "[dev] Installing dependencies..."
+  echo "[dev] Installing dependencies"
   npm install
 fi
 
-echo "[dev] Starting server (npm run dev)..."
-exec npm run dev
+# Export the variables from .env for this process (comments and blanks skipped).
+set -a
+# shellcheck disable=SC1091
+source <(grep -E '^[A-Z_]+=' .env)
+set +a
+
+echo "[dev] Starting on port ${PORT:-3000}; storage ${STORAGE_DIR:-./received}"
+exec node --watch server.js
