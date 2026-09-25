@@ -1,0 +1,23 @@
+# Caddy in front of the Node app (docker-compose.yml). Replace the host name
+# and the email, then `docker compose up -d`. Caddy obtains and renews the
+# Let's Encrypt certificate itself; the host name must resolve to this
+# server and ports 80 and 443 must be reachable from the internet.
+#
+# If the university issues the certificate instead, replace the `tls` line
+# with the certificate and key files, mounted into the container:
+#     tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
+
+wellbeing-mapper.example.org {
+    tls admin@example.org
+
+    encode gzip
+    reverse_proxy app:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+}

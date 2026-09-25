@@ -1,0 +1,21 @@
+# Caddy as a system service (package `caddy`) in front of the Node app
+# running under systemd on the same host. Install to /etc/caddy/Caddyfile,
+# replace the host name and email, then `systemctl reload caddy`.
+#
+# If the university issues the certificate instead, replace the `tls` line:
+#     tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
+
+wellbeing-mapper.example.org {
+    tls admin@example.org
+
+    encode gzip
+    reverse_proxy 127.0.0.1:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+}

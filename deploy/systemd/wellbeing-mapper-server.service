@@ -1,0 +1,31 @@
+# Runs the Wellbeing Mapper server without Docker. See README.md,
+# "Option B: systemd". Install to /etc/systemd/system/.
+[Unit]
+Description=Wellbeing Mapper data-collection server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wellbeing
+Group=wellbeing
+WorkingDirectory=/opt/wellbeing-mapper-server
+EnvironmentFile=/etc/wellbeing-mapper-server.env
+ExecStart=/usr/bin/node /opt/wellbeing-mapper-server/server.js
+Restart=always
+RestartSec=5
+
+# Confinement: the service can write only to its data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/wellbeing-mapper
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,60 @@
+# Wellbeing Mapper server on a single VPS: the Node app behind Caddy, which
+# terminates HTTPS with an automatically issued and renewed Let's Encrypt
+# certificate. See README.md, "Deploying on the VPS".
+#
+#   cp .env.template .env          # tune limits if needed
+#   edit Caddyfile                 # your host name and email
+#   mkdir -p data && cp participant_codes.json data/
+#   docker compose up -d --build
+#
+# Submissions and the participant-code file live in ./data on the host.
+# Back that directory up (scripts/backup.sh).
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      STORAGE_DIR: /data/received
+      PARTICIPANT_CODES_FILE: /data/participant_codes.json
+      MAX_REQUEST_SIZE: ${MAX_REQUEST_SIZE:-25mb}
+      MIN_FREE_MB: ${MIN_FREE_MB:-500}
+      RATE_LIMIT_VALIDATE_PER_10MIN: ${RATE_LIMIT_VALIDATE_PER_10MIN:-60}
+      RATE_LIMIT_UPLOAD_PER_10MIN: ${RATE_LIMIT_UPLOAD_PER_10MIN:-300}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    volumes:
+      - ./data:/data
+    # Reachable only from Caddy on the Compose network; no host port.
+    expose:
+      - "3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

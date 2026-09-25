@@ -1,42 +1,26 @@
-# Logs
-*.log
-npm-debug.log*
-
-# Environment variables
+# Environment
 .env
-.env.local
-.env.production
+.env.*
 
-# Sensitive data files
-participant_codes.json
+# Keys: never commit. The public key goes into the app; the private key stays
+# offline with the research team.
 *.pem
-private_key.pem
-public_key.pem
+keys/
 
-# Received encrypted blobs (decrypt offline, do not commit)
+# Participant codes (the server's hash file and the private code list)
+participant_codes.json
+participant_codes_*.csv
+
+# Data: submissions received by the server and their decrypted output
 received/
+data/
+decrypted/
 
-# Dependencies
+# Dependencies and logs
 node_modules/
+*.log
 
-# Build outputs
-dist/
-build/
-
-# Deployment artifacts
-*.zip
-
-# AWS
-trust-policy.json
-response.json
-
-# IDE
+# OS / IDE
+.DS_Store
 .vscode/
 .idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temporary files
-*.tmp
