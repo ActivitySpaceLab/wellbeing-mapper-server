@@ -294,3 +294,7 @@ builds it with `SERVER_BASE_URL=http://localhost:3000/api/v1`.
   code only lets someone submit data under it.
 * Keep the VPS itself updated (`unattended-upgrades`) and reachable only
   on 22, 80 and 443.
+
+## License
+
+GNU General Public License v3.0, like the app. See `LICENSE`.

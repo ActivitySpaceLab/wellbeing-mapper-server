@@ -10,7 +10,7 @@
     "smoke": "scripts/smoke-test.sh"
   },
   "author": "ActivitySpaceLab",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "private": true,
   "dependencies": {
     "cors": "^2.8.6",
