@@ -33,8 +33,8 @@ The paths are the constants in the app's `lib/util/env.dart`; the app builds
 the full URL from `SERVER_BASE_URL` (see [Point the app at it](#point-the-app-at-it)).
 
 The app uploads only when all of these hold: it is in research mode, the
-participant has completed the consent form, and the build was given a server
-URL. It retries network errors and 5xx answers with backoff and keeps the
+participant has completed the consent form, this server accepted their
+participant code, and the build was given a server URL. It retries network errors and 5xx answers with backoff and keeps the
 record locally in the meantime; a 4xx answer is final. Biweekly surveys carry
 the participant's location history for the period inside the encrypted
 payload, so there is no separate location endpoint.
@@ -160,8 +160,10 @@ research mode with a real code, which is what you want for test builds.
 
 Every submission is encrypted with the study's RSA public key, which is
 compiled into the app. Only the matching private key can decrypt the data.
-The app ships with a placeholder key: generate the study's own pair before
-collecting data, and never reuse the placeholder.
+The app carries the study's public key, generated on 2026-09-28; its
+fingerprint is in the comment above `ENV.researchPublicKey` in the app's
+`lib/util/env.dart`. The steps below are for generating a pair, which you
+only need again to replace it.
 
 ```bash
 openssl genrsa -out wellbeing_private_key.pem 4096
