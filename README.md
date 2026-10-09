@@ -90,6 +90,7 @@ sudo usermod -aG docker "$USER" && newgrp docker
 git clone https://github.com/ActivitySpaceLab/wellbeing-mapper-server.git
 cd wellbeing-mapper-server
 cp .env.template .env            # defaults are fine; see the comments to tune limits
+printf 'APP_UID=%s\nAPP_GID=%s\n' "$(id -u)" "$(id -g)" >> .env   # run the server as you
 nano Caddyfile                   # your host name and an email for certificate notices
 mkdir -p data
 cp /path/to/participant_codes.json data/

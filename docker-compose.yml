@@ -15,6 +15,11 @@ services:
     build: .
     restart: unless-stopped
     init: true
+    # Runs as your own account on the host (APP_UID and APP_GID in .env, from
+    # `id -u` and `id -g`), so ./data belongs to you and you can read and
+    # replace what is in it without sudo. Without them: the image's `node`
+    # user, uid 1000, which can only write to a ./data owned by uid 1000.
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
       NODE_ENV: production
       PORT: "3000"
